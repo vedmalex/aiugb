@@ -100,9 +100,13 @@ var processFile = new pipe.Parallel({
 			}
 			if (res.name && res.name.match(/См\./))
 				console.log(ln, ctx.file);
-			if(indent == 0)
-			
-				ctx.refs[res.name]=true;
+			if (indent == 0)
+				ctx.refs[res.name] = true;
+
+			if (res.name == "опред.") {
+				res.def = true;
+				// delete res.name;
+			}
 
 			var verse = line.match(/((\d{1,2})[\.\,]?(\d{0,2}))(\s?[-—]\s?(\d{1,2})?)?/g);
 			if (verse) {
@@ -136,12 +140,18 @@ var processFile = new pipe.Parallel({
 					indent = Array.isArray(indent) ? indent.length : 0;
 					// console.log(line);
 					cur = indent + 1;
-					current[cur] = extractInfo(indent, line);
-					var p = current[indent];
-					if (!p.hasOwnProperty('children')) p.children = [];
-					current[indent].children.push(current[cur]);
-					for (var i = cur + 1, len = current.length; i < len; i++) {
-						current[i] = undefined;
+
+					var ei = extractInfo(indent, line);
+					if (!ei.def) {
+						current[cur] = ei;
+						var p = current[indent];
+						if (!p.hasOwnProperty('children')) p.children = [];
+						current[indent].children.push(current[cur]);
+						for (var i = cur + 1, len = current.length; i < len; i++) {
+							current[i] = undefined;
+						}
+					} else {
+						current[indent].verse = ei.verse;
 					}
 				} catch (e) {
 					console.log(ln, ctx.file);
@@ -163,7 +173,7 @@ var processFile = new pipe.Parallel({
 processFile.execute({
 	list: list,
 	bg: {},
-	refs:{}
+	refs: {}
 }, function(err, ctx) {
 	if (!err) {
 		fs.writeFileSync('AIUBG.json', JSON.stringify(ctx.bg));
