@@ -100,12 +100,16 @@ var processFile = new pipe.Parallel({
 			}
 			if (res.name && res.name.match(/См\./))
 				console.log(ln, ctx.file);
-			var verse = line.match(/((\d{1,2})[\.\,]?(\d{0,2}))(\s?-\s?(\d{1,2})?)?/g);
+			if(indent == 0)
+			
+				ctx.refs[res.name]=true;
+
+			var verse = line.match(/((\d{1,2})[\.\,]?(\d{0,2}))(\s?[-—]\s?(\d{1,2})?)?/g);
 			if (verse) {
 				var verst = res.verse = [];
 				var vrs;
 				for (var i = 0, len = verse.length; i < len; i++) {
-					vrs = verse[i].match(/((\d{1,2})[\.\,]?(\d{0,2}))(\s?-\s?(\d{1,2})?)?/);
+					vrs = verse[i].match(/((\d{1,2})[\.\,]?(\d{0,2}))(\s?[-—]\s?(\d{1,2})?)?/);
 					var ch = parseInt(vrs[2], 10);
 					var ves = parseInt(vrs[3], 10);
 					var vee = vrs[5] && parseInt(vrs[5], 10);
@@ -114,7 +118,10 @@ var processFile = new pipe.Parallel({
 							verst.push(ch + '.' + k);
 						}
 					} else {
-						verst.push(ch + '.' + ves);
+						if (ves)
+							verst.push(ch + '.' + ves);
+						else
+							verst.push(ch);
 					}
 				}
 			}
@@ -155,10 +162,12 @@ var processFile = new pipe.Parallel({
 
 processFile.execute({
 	list: list,
-	bg: {}
+	bg: {},
+	refs:{}
 }, function(err, ctx) {
 	if (!err) {
-		fs.writeFileSync('BGMCKN.json', JSON.stringify(ctx.bg));
+		fs.writeFileSync('AIUBG.json', JSON.stringify(ctx.bg));
+		fs.writeFileSync('REFS.json', JSON.stringify(ctx.refs));
 	} else {
 		console.log(err);
 	}
