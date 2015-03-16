@@ -52,7 +52,7 @@ var processFile = new pipe.Parallel({
 	split: function(ctx) {
 		return ctx.list.map(function(i) {
 			var res = ctx.fork(i);
-			res.index = res.bg[i.name] = [];
+			res.children = res.bg[i.name] = [];
 			return res;
 		});
 	},
@@ -60,19 +60,13 @@ var processFile = new pipe.Parallel({
 		var source = fs.createReadStream(ctx.file);
 		var liner = new linereader();
 		source.pipe(liner);
-		var number = 0;
 		var ln = 0;
 		var hasError;
 		var line;
-		var current;
-		var current1;
-		var current2;
-		var current3;
-		var current4;
+		var current = [ctx];
 
 		function extractInfo(indent, _line) {
 			var res = {};
-			if (_line.match(/См./)) debugger;
 			var line = _line.slice(indent);
 			var found = line.match(/\,\s\d/);
 			if (found) {
@@ -96,7 +90,7 @@ var processFile = new pipe.Parallel({
 						var res = {
 							name: p[0].trim()
 						};
-						
+
 						if (sub.length) {
 							res.sub = sub[0].trim();
 						}
@@ -123,33 +117,27 @@ var processFile = new pipe.Parallel({
 					}
 				}
 			}
-
-			res.children = [];
 			return res;
 		}
 
 		liner.on('readable', function() {
 			while (line = liner.read()) {
-				if (/^(\t){4}/.test(line)) {
-					console.log(line);
-					current4 = extractInfo(4, line);
-					current3.children.push(current4);
-				} else if (/^(\t){3}/.test(line)) {
-					console.log(line);
-					current3 = extractInfo(3, line);
-					current2.children.push(current3);
-				} else if (/^(\t){2}/.test(line)) {
-					console.log(line);
-					current2 = extractInfo(2, line);
-					current1.children.push(current2);
-				} else if (/^(\t){1}/.test(line)) {
-					console.log(line);
-					current1 = extractInfo(1, line);
-					current.children.push(current1);
-				} else if (/^[^\t]/.test(line)) {
-					console.log(line);
-					current = extractInfo(0, line);
-					ctx.index.push(current);
+				try {
+					ln++;
+					var indent = line.match(/\t/g);
+					indent = Array.isArray(indent) ? indent.length : 0; 
+					// console.log(line);
+					cur = indent + 1;
+					current[cur] = extractInfo(indent, line);
+					var p = current[indent];
+					if (!p.hasOwnProperty('children')) p.children = [];
+					current[indent].children.push(current[cur]);
+					for (var i = cur + 1, len = current.length; i < len; i++) {
+						current[i] = undefined;
+					}
+				} catch (e) {
+					console.log(ln, ctx.file);
+					throw e;
 				}
 			}
 		});
