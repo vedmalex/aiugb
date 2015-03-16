@@ -32,18 +32,18 @@ module.exports = linereader;
 var fs = require('fs-extra');
 var path = require('path');
 
-var list = fs.readdirSync('./');
+var list = fs.readdirSync('gloss');
 list = list.filter(function(fl) {
 	return (path.extname(fl) === '.md' && fl.length == 4);
 }).map(function(f) {
 	return {
-		file: f,
+		file: path.join('gloss', f),
 		name: f.slice(0, 1)
 	};
 });
 
 // var list = [{
-// 	file: 'а.md',
+// 	file: 'gloss/в.md',
 // 	name: 'а'
 // }];
 var pipe = require('pipeline.js');
@@ -73,13 +73,13 @@ var processFile = new pipe.Parallel({
 				var vStarts = line.indexOf(found[0]);
 				res.name = line.slice(0, vStarts > 0 ? vStarts : line.length).trim();
 			} else {
-				if (!line.match(/^[Сc]м\./)) {
+				if (!line.match(/^[Сс]м\./)) {
 					var dStarts = line.lastIndexOf('.');
 					res.name = line.slice(0, dStarts).trim();
 				} else {
-					var long = line.match(/^[Сc]м\.\sтакже/);
+					var long = line.match(/^[Сс]м\.\sтакже/);
 					if (long) {
-						line = line.slice(long[0].length)
+						line = line.slice(long[0].length);
 					} else {
 						line = line.slice(3);
 					}
@@ -98,7 +98,8 @@ var processFile = new pipe.Parallel({
 					});
 				}
 			}
-
+			if (res.name && res.name.match(/См\./))
+				console.log(ln, ctx.file);
 			var verse = line.match(/((\d{1,2})[\.\,]?(\d{0,2}))(\s?-\s?(\d{1,2})?)?/g);
 			if (verse) {
 				var verst = res.verse = [];
@@ -125,7 +126,7 @@ var processFile = new pipe.Parallel({
 				try {
 					ln++;
 					var indent = line.match(/\t/g);
-					indent = Array.isArray(indent) ? indent.length : 0; 
+					indent = Array.isArray(indent) ? indent.length : 0;
 					// console.log(line);
 					cur = indent + 1;
 					current[cur] = extractInfo(indent, line);
