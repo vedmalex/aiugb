@@ -42,10 +42,11 @@ list = list.filter(function(fl) {
 	};
 });
 
-// var list = [{
-// 	file: 'gloss/в.md',
-// 	name: 'а'
-// }];
+var gloss = [{
+	file: 'gloss/gloss.md',
+	name: 'gloss'
+}];
+
 var pipe = require('pipeline.js');
 
 var processFile = new pipe.Parallel({
@@ -90,9 +91,24 @@ var processFile = new pipe.Parallel({
 						var res = {
 							name: p[0].trim()
 						};
+						if (!ctx.refee.hasOwnProperty(res.name)) {
+							ctx.refee[res.name] = {
+								count: 0
+							};
+						}
+
+						var refee = ctx.refee[res.name];
+						refee.count++;
 
 						if (sub.length) {
 							res.sub = sub[0].trim();
+							if (!refee.sub) {
+								refee.sub = {};
+							}
+							if (!refee.sub.hasOwnProperty(res.sub)) {
+								refee.sub[res.sub] = 0;
+							}
+							refee.sub[res.sub] ++;
 						}
 						return res;
 					});
@@ -100,12 +116,29 @@ var processFile = new pipe.Parallel({
 			}
 			if (res.name && res.name.match(/См\./))
 				console.log(ln, ctx.file);
-			if (indent == 0)
-				ctx.refs[res.name] = true;
 
 			if (res.name == "опред.") {
 				res.def = true;
 				// delete res.name;
+			}
+
+			// санскрит
+			if (res.name) {
+				var syn = res.name.match(/ \(.*?\)/g);
+				if (syn) {
+
+					res.name = res.name.replace(/ \(.*?\)/, "", "g");
+					res.syn = syn.map(function(item) {
+						return item.trim().replace(/\(/, "", 'g').replace(/\)/, "", 'g');
+					});
+				}
+			}
+
+			if (indent === 0) {
+				if (ctx.refs[res.name])
+					ctx.refs[res.name]++;
+				else
+					ctx.refs[res.name] = 1;
 			}
 
 			var verse = line.match(/((\d{1,2})[\.\,]?(\d{0,2}))(\s?[-—]\s?(\d{1,2})?)?/g);
@@ -143,6 +176,7 @@ var processFile = new pipe.Parallel({
 
 					var ei = extractInfo(indent, line);
 					if (!ei.def) {
+						//если определение то не нужно создавать узел, нужно просто номера стихов
 						current[cur] = ei;
 						var p = current[indent];
 						if (!p.hasOwnProperty('children')) p.children = [];
@@ -170,14 +204,151 @@ var processFile = new pipe.Parallel({
 	}
 });
 
-processFile.execute({
+var processGloss = new pipe.Parallel({
+	split: function(ctx) {
+		return ctx.gloss.map(function(i) {
+			var res = ctx.fork(i);
+			res.children = res.bg[i.name] = [];
+			return res;
+		});
+	},
+	stage: function(ctx, done) {
+		var source = fs.createReadStream(ctx.file);
+		var liner = new linereader();
+		source.pipe(liner);
+		var ln = 0;
+		var hasError;
+		var line;
+		var current = [ctx];
+
+		function extractInfo(indent, _line) {
+			var res = {};
+			var line = _line.slice(indent);
+			if (!line.match(/^[Сс]м\./)) {
+				res.name = line.trim();
+			} else {
+				var long = line.match(/^[Сс]м\.\sтакже/);
+				if (long) {
+					line = line.slice(long[0].length);
+				} else {
+					line = line.slice(3);
+				}
+
+				res.ref = line.trim().split(',').map(function(ref) {
+					var p = ref.split(',');
+					var sub = p.slice(1);
+					var res = {
+						name: p[0].trim()
+					};
+					if (!ctx.refee.hasOwnProperty(res.name)) {
+						ctx.refee[res.name] = {
+							count: 0
+						};
+					}
+
+					var refee = ctx.refee[res.name];
+					refee.count++;
+
+					if (sub.length) {
+						res.sub = sub[0].trim();
+						if (!refee.sub) {
+							refee.sub = {};
+						}
+						if (!refee.sub.hasOwnProperty(res.sub)) {
+							refee.sub[res.sub] = 0;
+						}
+						refee.sub[res.sub] ++;
+					}
+					return res;
+				});
+			}
+
+			// санскрит
+			if (res.name && indent === 0) {
+				var syn = res.name.match(/ \(.*?\)/g);
+				if (syn) {
+
+					res.name = res.name.replace(/ \(.*?\)/, "", "g");
+					res.syn = syn.map(function(item) {
+						return item.trim().replace(/\(/, "", 'g').replace(/\)/, "", 'g');
+					});
+				}
+			}
+
+			if (indent === 0) {
+				if (ctx.refs[res.name])
+					ctx.refs[res.name]++;
+				else
+					ctx.refs[res.name] = 1;
+			}
+
+			return res;
+		}
+
+		liner.on('readable', function() {
+			while (line = liner.read()) {
+				try {
+					ln++;
+					var indent = line.match(/\t/g);
+					indent = Array.isArray(indent) ? indent.length : 0;
+					// console.log(line);
+					cur = indent + 1;
+
+					var ei = extractInfo(indent, line);
+					if (!ei.def) {
+						//если определение то не нужно создавать узел, нужно просто номера стихов
+						current[cur] = ei;
+						var p = current[indent];
+						if (!p.hasOwnProperty('children')) p.children = [];
+						current[indent].children.push(current[cur]);
+						for (var i = cur + 1, len = current.length; i < len; i++) {
+							current[i] = undefined;
+						}
+					} else {
+						current[indent].verse = ei.verse;
+					}
+				} catch (e) {
+					console.log(ln, ctx.file);
+					throw e;
+				}
+			}
+		});
+		liner.on('end', function() {
+			if (!hasError)
+				done();
+		});
+		liner.on('error', function(err) {
+			hasError = true;
+			done(err);
+		});
+	}
+});
+
+var runner = new pipe.Pipeline([
+	processFile,
+	processGloss,
+	function(ctx) {
+		for (var name in ctx.refee) {
+			if (!ctx.refs.hasOwnProperty(name)) {
+				ctx.notFound[name] = true;
+			}
+		}
+	}
+]);
+
+runner.execute({
 	list: list,
+	gloss: gloss,
 	bg: {},
-	refs: {}
+	refs: {},
+	refee: {},
+	notFound: {}
 }, function(err, ctx) {
 	if (!err) {
 		fs.writeFileSync('AIUBG.json', JSON.stringify(ctx.bg));
 		fs.writeFileSync('REFS.json', JSON.stringify(ctx.refs));
+		fs.writeFileSync('REFEE.json', JSON.stringify(ctx.refee));
+		fs.writeFileSync('NF.json', JSON.stringify(ctx.notFound));
 	} else {
 		console.log(err);
 	}
