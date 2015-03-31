@@ -29,6 +29,47 @@ linereader.prototype._flush = function(done) {
 
 module.exports = linereader;
 
+var clone = function(obj) {
+	return obj; //JSON.parse(JSON.stringify(obj));
+};
+
+var unwind = function(data, _root, _propName) {
+	var root = _root ? _root : {};
+	var objList = [root];
+	var propName = _propName;
+	var i, k, len, resLen, props;
+	var newItems = [];
+	if (data && Array.isArray(data)) {
+		len = data.length;
+		resLen = objList.length;
+		i = -1;
+		var rootClone = clone(root);
+		while (++i < len) {
+			newItems.push.apply(newItems, unwind(data[i], clone(rootClone), propName));
+		}
+	} else if (data && 'object' === typeof(data)) {
+		props = Object.keys(data);
+		len = props.length;
+		k = 0;
+		for (i = 0; i < len; i++) {
+			// newItems = clone(objList);
+			resLen = objList.length;
+			k = 0;
+			while (k++ < resLen) {
+				var buf = objList.shift();
+				var res = unwind(data[props[i]], buf, (propName ? propName + '<-' : '') + props[i]);
+				newItems.push.apply(newItems, res.length > 0 ? res : [buf]);
+			}
+			objList = newItems;
+		}
+	} else {
+		// if (data !== '' && data !== undefined && data !== null)
+		root[propName] = data;
+		return [root];
+	}
+	return newItems;
+};
+
 var fs = require('fs-extra');
 var path = require('path');
 
@@ -41,6 +82,11 @@ list = list.filter(function(fl) {
 		name: f.slice(0, 1)
 	};
 });
+
+// var list = [{
+// 	file: 'gloss/а.md',
+// 	name: 'gloss'
+// }];
 
 var gloss = [{
 	file: 'gloss/gloss.md',
@@ -93,12 +139,18 @@ var processFile = new pipe.Parallel({
 						};
 						if (!ctx.refee.hasOwnProperty(res.name)) {
 							ctx.refee[res.name] = {
-								count: 0
+								count: 0,
+								where: []
 							};
 						}
 
 						var refee = ctx.refee[res.name];
 						refee.count++;
+						if (!refee.where) refee.where = [];
+						refee.where.push({
+							line: ln,
+							file: ctx.file
+						});
 
 						if (sub.length) {
 							res.sub = sub[0].trim();
@@ -134,13 +186,18 @@ var processFile = new pipe.Parallel({
 				}
 			}
 
+			if (res.name) {
+				res.name = res.name.replace(/\,$/, "");
+			}
+
 			if (indent === 0) {
 				if (ctx.refs[res.name])
-					ctx.refs[res.name]++;
+					ctx.refs[res.name] ++;
 				else
 					ctx.refs[res.name] = 1;
 			}
 
+			// поправить регулярку чтобы она не кушала лишние символы....
 			var verse = line.match(/((\d{1,2})[\.\,]?(\d{0,2}))(\s?[-—]\s?(\d{1,2})?)?/g);
 			if (verse) {
 				var verst = res.verse = [];
@@ -242,12 +299,18 @@ var processGloss = new pipe.Parallel({
 					};
 					if (!ctx.refee.hasOwnProperty(res.name)) {
 						ctx.refee[res.name] = {
-							count: 0
+							count: 0,
+							where: []
 						};
 					}
 
 					var refee = ctx.refee[res.name];
 					refee.count++;
+					if (!refee.where) refee.where = [];
+					refee.where.push({
+						line: ln,
+						file: ctx.file
+					});
 
 					if (sub.length) {
 						res.sub = sub[0].trim();
@@ -275,9 +338,13 @@ var processGloss = new pipe.Parallel({
 				}
 			}
 
+			if (res.name) {
+				res.name = res.name.replace(/\,$/, "");
+			}
+
 			if (indent === 0) {
 				if (ctx.refs[res.name])
-					ctx.refs[res.name]++;
+					ctx.refs[res.name] ++;
 				else
 					ctx.refs[res.name] = 1;
 			}
@@ -324,9 +391,89 @@ var processGloss = new pipe.Parallel({
 	}
 });
 
+var extractor = require('./extractor.js').extractor;
+var Deque = require("double-ended-queue");
+
 var runner = new pipe.Pipeline([
 	processFile,
 	processGloss,
+	function(ctx) {
+		extractor({
+			source: ctx.bg,
+			map: function(emit, value) {
+				var queue = new Deque();
+
+				function getItem(item) {
+					if (item.hasOwnProperty('name')) {
+						queue.push(item.name);
+					}
+					if (item.hasOwnProperty('children')) {
+						item.children.forEach(getItem);
+					}
+					if (item.hasOwnProperty('verse')) {
+						item.verse.forEach(function(verse) {
+							emit(verse, queue.toString());
+						});
+					}
+					if (item.hasOwnProperty('name')) {
+						queue.pop();
+					}
+				}
+				value.forEach(getItem);
+			},
+			reduce: function(key, value) {
+				return value;
+			},
+			out: function(key, value) {
+				return {
+					verse: key,
+					themes: value
+				};
+			},
+			callback: function(err, data) {
+				ctx.content = data.sort(function(a, b) {
+					debugger;
+					// a < b = -1
+					// a > b = 1
+					// a == b = 1
+					var ac = String(a.verse).split('.');
+					var bc = String(b.verse).split('.');
+					ac0 = parseInt(ac[0], 10);
+					ac1 = parseInt(ac[1] || "0", 10);
+					bc0 = parseInt(bc[0], 10);
+					bc1 = parseInt(bc[1] || "0", 10);
+					if (ac.length == 2) {
+						if (bc.length == 2) {
+							if (ac0 > bc0) return 1;
+							if (ac0 < bc0) return -1;
+							if (ac0 == bc0) {
+								if (ac1 > bc1) return 1;
+								if (ac1 < bc1) return -1;
+								if (ac1 == bc1) return 0;
+							}
+						}
+						if (bc.length == 1) {
+							if (ac0 > bc0) return 1;
+							if (ac0 < bc0) return -1;
+							if (ac0 == bc0) return -1;
+						}
+					}
+					if (ac.length == 1) {
+						if (bc.length == 2) {
+							if (ac0 > bc0) return 1;
+							if (ac0 < bc0) return -1;
+							if (ac0 == bc0) return 1;
+						}
+						if (bc.length == 1) {
+							if (ac0 > bc0) return 1;
+							if (ac0 < bc0) return -1;
+							if (ac0 == bc0) return 0;
+						}
+					}
+				});
+			}
+		});
+	},
 	function(ctx) {
 		for (var name in ctx.refee) {
 			if (!ctx.refs.hasOwnProperty(name)) {
@@ -349,6 +496,8 @@ runner.execute({
 		fs.writeFileSync('REFS.json', JSON.stringify(ctx.refs));
 		fs.writeFileSync('REFEE.json', JSON.stringify(ctx.refee));
 		fs.writeFileSync('NF.json', JSON.stringify(ctx.notFound));
+		fs.writeFileSync('content.json', JSON.stringify(ctx.content));
+		// fs.writeFileSync('UWAIUBG.json', JSON.stringify(unwind(ctx.bg)));
 	} else {
 		console.log(err);
 	}
