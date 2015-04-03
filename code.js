@@ -1,6 +1,7 @@
 // http://strongloop.com/strongblog/practical-examples-of-the-new-node-js-streams-api/
 var stream = require('stream');
 var utils = require('util');
+var yaml = require('js-yaml');
 
 function linereader() {
 	(stream.Transform).call(this, {
@@ -432,7 +433,6 @@ var runner = new pipe.Pipeline([
 			},
 			callback: function(err, data) {
 				ctx.content = data.sort(function(a, b) {
-					debugger;
 					// a < b = -1
 					// a > b = 1
 					// a == b = 1
@@ -475,6 +475,24 @@ var runner = new pipe.Pipeline([
 		});
 	},
 	function(ctx) {
+		extractor({
+			source: ctx.content,
+			map: function(emit, value) {
+				var sp = value.verse.split('.');
+				emit(sp[0], value);
+			},
+			reduce: function(key, value) {
+				return value;
+			},
+			out: function(key, value) {
+				return {chapter: key, verses: value};
+			},
+			callback: function(err, data) {
+				ctx.contentByChapter = data;
+			}
+		});
+	},
+	function(ctx) {
 		for (var name in ctx.refee) {
 			if (!ctx.refs.hasOwnProperty(name)) {
 				ctx.notFound[name] = true;
@@ -482,6 +500,7 @@ var runner = new pipe.Pipeline([
 		}
 	}
 ]);
+
 
 runner.execute({
 	list: list,
@@ -492,11 +511,17 @@ runner.execute({
 	notFound: {}
 }, function(err, ctx) {
 	if (!err) {
-		fs.writeFileSync('AIUBG.json', JSON.stringify(ctx.bg));
-		fs.writeFileSync('REFS.json', JSON.stringify(ctx.refs));
-		fs.writeFileSync('REFEE.json', JSON.stringify(ctx.refee));
-		fs.writeFileSync('NF.json', JSON.stringify(ctx.notFound));
-		fs.writeFileSync('content.json', JSON.stringify(ctx.content));
+		// fs.writeFileSync('AIUBG.json', JSON.stringify(ctx.bg));
+		fs.writeFileSync('AIUBG.yaml',  yaml.dump(ctx.bg));
+		// fs.writeFileSync('REFS.json', JSON.stringify(ctx.refs));
+		fs.writeFileSync('REFS.yaml', yaml.dump(ctx.refs));
+		// fs.writeFileSync('REFEE.json', JSON.stringify(ctx.refee));
+		fs.writeFileSync('REFEE.yaml', yaml.dump(ctx.refee));
+		// fs.writeFileSync('NF.json', JSON.stringify(ctx.notFound));
+		fs.writeFileSync('NF.yaml', yaml.dump(ctx.notFound));
+		// fs.writeFileSync('content.json', JSON.stringify(ctx.content));
+		fs.writeFileSync('content.yaml', yaml.dump(ctx.content));
+		fs.writeFileSync('content.yaml', yaml.dump(ctx.contentByChapter));
 		// fs.writeFileSync('UWAIUBG.json', JSON.stringify(unwind(ctx.bg)));
 	} else {
 		console.log(err);
