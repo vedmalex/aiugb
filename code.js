@@ -413,7 +413,7 @@ var runner = new pipe.Pipeline([
 					}
 					if (item.hasOwnProperty('verse')) {
 						item.verse.forEach(function(verse) {
-							emit(verse, queue.toString());
+							emit(verse, queue.toArray().join(', '));
 						});
 					}
 					if (item.hasOwnProperty('name')) {
@@ -485,12 +485,35 @@ var runner = new pipe.Pipeline([
 				return value;
 			},
 			out: function(key, value) {
-				return {chapter: key, verses: value};
+				return {
+					chapter: key,
+					verses: value
+				};
 			},
 			callback: function(err, data) {
 				ctx.contentByChapter = data;
 			}
 		});
+	},
+	function(ctx) {
+		debugger;
+		var Factory = require('fte.js').Factory;
+		var f = new Factory({
+			root: ['./']
+		});
+
+		for (var chapter in ctx.contentByChapter) {
+			var src = f.run({
+				chapter: chapter,
+				verses: ctx.contentByChapter[chapter].verses
+			}, 'template.nhtml');
+			// var folder = 'ebook/'+('0'+chapter).slice(-2)+'/';
+			// подумать а надо ли это?
+			fs.writeFileSync('ebook/'+('0'+chapter).slice(-2)+'.md', src);
+		}
+		var summary = f.run({bg:ctx.contentByChapter}, 'SUMMARY.nhtml');
+		fs.writeFileSync('ebook/SUMMARY.md', summary);
+
 	},
 	function(ctx) {
 		for (var name in ctx.refee) {
@@ -512,7 +535,7 @@ runner.execute({
 }, function(err, ctx) {
 	if (!err) {
 		// fs.writeFileSync('AIUBG.json', JSON.stringify(ctx.bg));
-		fs.writeFileSync('AIUBG.yaml',  yaml.dump(ctx.bg));
+		fs.writeFileSync('AIUBG.yaml', yaml.dump(ctx.bg));
 		// fs.writeFileSync('REFS.json', JSON.stringify(ctx.refs));
 		fs.writeFileSync('REFS.yaml', yaml.dump(ctx.refs));
 		// fs.writeFileSync('REFEE.json', JSON.stringify(ctx.refee));
