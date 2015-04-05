@@ -495,6 +495,28 @@ var runner = new pipe.Pipeline([
 			}
 		});
 	},
+	// function byChappter(ctx) {
+	// 	debugger;
+	// 	var Factory = require('fte.js').Factory;
+	// 	var f = new Factory({
+	// 		root: ['./']
+	// 	});
+
+	// 	for (var chapter in ctx.contentByChapter) {
+	// 		var src = f.run({
+	// 			chapter: chapter,
+	// 			verses: ctx.contentByChapter[chapter].verses
+	// 		}, 'template.nhtml');
+	// 		// var folder = 'ebook/'+('0'+chapter).slice(-2)+'/';
+	// 		// подумать а надо ли это?
+	// 		fs.writeFileSync('ebook/' + ('0' + chapter).slice(-2) + '.md', src);
+	// 	}
+	// 	var summary = f.run({
+	// 		bg: ctx.contentByChapter
+	// 	}, 'SUMMARY.nhtml');
+	// 	fs.writeFileSync('ebook/SUMMARY.md', summary);
+
+	// },
 	function(ctx) {
 		debugger;
 		var Factory = require('fte.js').Factory;
@@ -502,16 +524,36 @@ var runner = new pipe.Pipeline([
 			root: ['./']
 		});
 
+		var summ = [];
 		for (var chapter in ctx.contentByChapter) {
-			var src = f.run({
-				chapter: chapter,
-				verses: ctx.contentByChapter[chapter].verses
-			}, 'template.nhtml');
-			// var folder = 'ebook/'+('0'+chapter).slice(-2)+'/';
-			// подумать а надо ли это?
-			fs.writeFileSync('ebook/'+('0'+chapter).slice(-2)+'.md', src);
+			var chsum = [];
+			var chVerses = ctx.contentByChapter[chapter].verses;
+			for (var i = 0, len = chVerses.length; i < len; i++) {
+				var verse = chVerses[i];
+				var src = f.run({
+					verse: verse.verse,
+					themes: verse.themes
+				}, 'verse.nhtml');
+				var folder = ('0' + chapter).slice(-2) + '/';
+				// подумать а надо ли это?
+				fs.ensureDirSync('ebook/'+folder);
+				var verName = verse.verse.split('.').map(function(vs) {
+					return ('0' + vs).slice(-2);
+				}).join('');
+
+				var fn = folder + verName + '.md';
+				chsum.push({
+					v: verse.verse,
+					f: fn
+				});
+
+				fs.writeFileSync('ebook/'+fn, src);
+			}
+			summ.push(chsum);
 		}
-		var summary = f.run({bg:ctx.contentByChapter}, 'SUMMARY.nhtml');
+		var summary = f.run({
+			bg: summ
+		}, 'SUMMARYBVERSE.nhtml');
 		fs.writeFileSync('ebook/SUMMARY.md', summary);
 
 	},
