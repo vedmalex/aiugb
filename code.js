@@ -125,10 +125,12 @@ var processFile = new pipe.Parallel({
 					var dStarts = line.lastIndexOf('.');
 					res.name = line.slice(0, dStarts).trim();
 				} else {
+					var redirect;
 					var long = line.match(/^[Сс]м\.\sтакже/);
 					if (long) {
 						line = line.slice(long[0].length);
 					} else {
+						redirect = true;
 						line = line.slice(3);
 					}
 
@@ -165,15 +167,13 @@ var processFile = new pipe.Parallel({
 						}
 						return res;
 					});
+					if (redirect) {
+						res.redirect = true;
+					}
 				}
 			}
 			if (res.name && res.name.match(/См\./))
 				console.log(ln, ctx.file);
-
-			if (res.name == "опред.") {
-				res.def = true;
-				// delete res.name;
-			}
 
 			// санскрит
 			if (res.name) {
@@ -220,6 +220,9 @@ var processFile = new pipe.Parallel({
 					}
 				}
 			}
+			if (res.name == "опред.") {
+				res.def = true;
+			}
 			return res;
 		}
 
@@ -233,17 +236,17 @@ var processFile = new pipe.Parallel({
 					cur = indent + 1;
 
 					var ei = extractInfo(indent, line);
-					if (!ei.def) {
-						//если определение то не нужно создавать узел, нужно просто номера стихов
-						current[cur] = ei;
-						var p = current[indent];
-						if (!p.hasOwnProperty('children')) p.children = [];
-						current[indent].children.push(current[cur]);
-						for (var i = cur + 1, len = current.length; i < len; i++) {
-							current[i] = undefined;
-						}
-					} else {
-						current[indent].verse = ei.verse;
+					current[cur] = ei;
+					var p = current[indent];
+					if (!p.hasOwnProperty('children')) p.children = [];
+					current[indent].children.push(current[cur]);
+					for (var i = cur + 1, len = current.length; i < len; i++) {
+						current[i] = undefined;
+					}
+					if (ei.def) {
+						//если определение то не нужно создавать узел,
+						// нужно записать номера стихов в поле определения.
+						current[indent].def = ei.verse;
 					}
 				} catch (e) {
 					console.log(ln, ctx.file);
@@ -285,10 +288,12 @@ var processGloss = new pipe.Parallel({
 			if (!line.match(/^[Сс]м\./)) {
 				res.name = line.trim();
 			} else {
+				var redirect = false;
 				var long = line.match(/^[Сс]м\.\sтакже/);
 				if (long) {
 					line = line.slice(long[0].length);
 				} else {
+					redirect = true;
 					line = line.slice(3);
 				}
 
@@ -325,6 +330,10 @@ var processGloss = new pipe.Parallel({
 					}
 					return res;
 				});
+
+				if (redirect) {
+					res.redirect = true;
+				}
 			}
 
 			// санскрит
@@ -363,17 +372,15 @@ var processGloss = new pipe.Parallel({
 					cur = indent + 1;
 
 					var ei = extractInfo(indent, line);
-					if (!ei.def) {
-						//если определение то не нужно создавать узел, нужно просто номера стихов
-						current[cur] = ei;
-						var p = current[indent];
-						if (!p.hasOwnProperty('children')) p.children = [];
-						current[indent].children.push(current[cur]);
-						for (var i = cur + 1, len = current.length; i < len; i++) {
-							current[i] = undefined;
-						}
-					} else {
-						current[indent].verse = ei.verse;
+					current[cur] = ei;
+					var p = current[indent];
+					if (!p.hasOwnProperty('children')) p.children = [];
+					current[indent].children.push(current[cur]);
+					for (var i = cur + 1, len = current.length; i < len; i++) {
+						current[i] = undefined;
+					}
+					if (ei.def) {
+						current[indent].def = ei.verse;
 					}
 				} catch (e) {
 					console.log(ln, ctx.file);
@@ -394,6 +401,7 @@ var processGloss = new pipe.Parallel({
 
 var extractor = require('./extractor.js').extractor;
 var Deque = require("double-ended-queue");
+var _ = require('lodash');
 
 var runner = new pipe.Pipeline([
 	processFile,
@@ -413,7 +421,13 @@ var runner = new pipe.Pipeline([
 					}
 					if (item.hasOwnProperty('verse')) {
 						item.verse.forEach(function(verse) {
-							emit(verse, queue.toArray().join(', '));
+							var theme = queue.toArray().join(', ').replace(/\*/igm, '\\*');
+							var also = _.difference(item.verse, [verse]);
+							var result = {
+								theme: theme,
+							};
+							if (also.length > 0) result.also = also;
+							emit(verse, result);
 						});
 					}
 					if (item.hasOwnProperty('name')) {
@@ -475,6 +489,44 @@ var runner = new pipe.Pipeline([
 		});
 	},
 	function(ctx) {
+				debugger;
+		extractor({
+			source: ctx.bg,
+			map: function(emit, value) {
+				var queue = new Deque();
+
+				function getItem(item) {
+					if (item.hasOwnProperty('name')) {
+						queue.push(item.name);
+					}
+					if (item.hasOwnProperty('children')) {
+						item.children.forEach(getItem);
+					}
+					if (item.def instanceof Array) {
+						var def = queue.toArray().join(', ').replace(/\*/igm, '\\*');
+						emit(def, item.def);
+					}
+					if (item.hasOwnProperty('name')) {
+						queue.pop();
+					}
+				}
+				value.forEach(getItem);
+			},
+			reduce: function(key, value) {
+				return value;
+			},
+			out: function(key, value) {
+				return {
+					def: key,
+					verses: value[0]
+				};
+			},
+			callback: function(err, data) {
+				ctx.defs = data;
+			}
+		});
+	},
+	function(ctx) {
 		extractor({
 			source: ctx.content,
 			map: function(emit, value) {
@@ -495,28 +547,6 @@ var runner = new pipe.Pipeline([
 			}
 		});
 	},
-	// function byChappter(ctx) {
-	// 	debugger;
-	// 	var Factory = require('fte.js').Factory;
-	// 	var f = new Factory({
-	// 		root: ['./']
-	// 	});
-
-	// 	for (var chapter in ctx.contentByChapter) {
-	// 		var src = f.run({
-	// 			chapter: chapter,
-	// 			verses: ctx.contentByChapter[chapter].verses
-	// 		}, 'template.nhtml');
-	// 		// var folder = 'ebook/'+('0'+chapter).slice(-2)+'/';
-	// 		// подумать а надо ли это?
-	// 		fs.writeFileSync('ebook/' + ('0' + chapter).slice(-2) + '.md', src);
-	// 	}
-	// 	var summary = f.run({
-	// 		bg: ctx.contentByChapter
-	// 	}, 'SUMMARY.nhtml');
-	// 	fs.writeFileSync('ebook/SUMMARY.md', summary);
-
-	// },
 	function(ctx) {
 		debugger;
 		var Factory = require('fte.js').Factory;
@@ -535,8 +565,7 @@ var runner = new pipe.Pipeline([
 					themes: verse.themes
 				}, 'verse.nhtml');
 				var folder = ('0' + chapter).slice(-2) + '/';
-				// подумать а надо ли это?
-				fs.ensureDirSync('ebook/'+folder);
+				fs.ensureDirSync('themesByVerse/' + folder);
 				var verName = verse.verse.split('.').map(function(vs) {
 					return ('0' + vs).slice(-2);
 				}).join('');
@@ -547,14 +576,22 @@ var runner = new pipe.Pipeline([
 					f: fn
 				});
 
-				fs.writeFileSync('ebook/'+fn, src);
+				fs.writeFileSync('themesByVerse/' + fn, src);
 			}
 			summ.push(chsum);
 		}
+
+		var definitions = f.run({
+			defs: ctx.defs
+		}, 'definitions.nhtml');
+
+		fs.writeFileSync('themesByVerse/definitions.md', definitions);
+
+
 		var summary = f.run({
 			bg: summ
 		}, 'SUMMARYBVERSE.nhtml');
-		fs.writeFileSync('ebook/SUMMARY.md', summary);
+		fs.writeFileSync('themesByVerse/SUMMARY.md', summary);
 
 	},
 	function(ctx) {
@@ -572,6 +609,7 @@ runner.execute({
 	gloss: gloss,
 	bg: {},
 	refs: {},
+	defs: {},
 	refee: {},
 	notFound: {}
 }, function(err, ctx) {
@@ -586,9 +624,11 @@ runner.execute({
 		fs.writeFileSync('NF.yaml', yaml.dump(ctx.notFound));
 		// fs.writeFileSync('content.json', JSON.stringify(ctx.content));
 		fs.writeFileSync('content.yaml', yaml.dump(ctx.content));
-		fs.writeFileSync('content.yaml', yaml.dump(ctx.contentByChapter));
+		fs.writeFileSync('contentByChapter.yaml', yaml.dump(ctx.contentByChapter));
+		fs.writeFileSync('definitions.yaml', yaml.dump(ctx.defs));
 		// fs.writeFileSync('UWAIUBG.json', JSON.stringify(unwind(ctx.bg)));
+		// сделать файл с определениями!!!
 	} else {
-		console.log(err);
+		console.log(err.stack);
 	}
 });
