@@ -1,0 +1,26 @@
+<#var _ = require('lodash');#># #{_.capitalize(context.name)}<#
+function child(_indent, item){
+	var indent = _.repeat('  ', _indent);
+#>
+#{indent}#{item.name ? '- '+item.name : ''}<#
+if(item.syn){#> (#{item.syn})<#}
+if(item.verse){#>, #{item.verse.join(', ')}<#} 
+if(item.children){ item.children.forEach(function(i){
+	child(_indent + 1, i)}
+	) }
+if(item.ref){
+var refs = item.ref.map(function(i){
+		var result = [i.name];
+		if(i.sub){
+			result.push(i.sub);
+		}
+		return result.join(', ');
+	}).join('; ');
+#>#{indent}См.#{item.redirect ? '' : ' также'} #{refs}<#}}
+
+var item;
+var content = context.content;
+for (var i = 0, len = context.content.length; i < len; i++) {
+	item = context.content[i];
+	child(1, item);
+}#>

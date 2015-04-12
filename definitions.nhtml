@@ -1,0 +1,15 @@
+# Список определений в тексте Бхагавад-Гиты как она есть.
+<# var def;
+for (var i = 0, len = context.defs.length; i < len; i++) {
+	def = context.defs[i];
+	debugger;
+	verses = def.verses.map(function(v){
+		var also = v.split('.');
+		var ch = ('0'+also[0]).slice(-2);
+		var ve = ('0'+also[1]).slice(-2);
+		var url = './'+ ch + '/' + ch + ve + '.md'
+		return '['+v+']('+url+')';
+	});
+#>
+- #{def.def}
+	#{verses.join(', ')}<#}#>
