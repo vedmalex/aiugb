@@ -316,7 +316,6 @@ module.exports = function() {
 	};
 
 	// можно просто по разделам ссылок на стихи покидать и все...
-
 	var fastSearch = {};
 debugger;
 	for (var i in bgChapterMap) {
